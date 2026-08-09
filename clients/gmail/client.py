@@ -455,3 +455,24 @@ class GmailClient:
                 "addLabelIds": label_ids,
             },
         ).execute()
+
+    def delete_label(self, label_id: str) -> None:
+        """
+        Delete a Gmail label.
+
+        Gmail system labels cannot be deleted.
+        """
+        try:
+            (
+                self._service.users()
+                .labels()
+                .delete(
+                    userId="me",
+                    id=label_id,
+                )
+                .execute()
+            )
+        except HttpError as exc:
+            raise GmailClientError(
+                f"Failed to delete Gmail label {label_id}"
+            ) from exc
