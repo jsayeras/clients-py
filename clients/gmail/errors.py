@@ -2,9 +2,7 @@ from __future__ import annotations
 
 
 class GmailClientError(Exception):
-    """
-    Base exception raised by the Gmail client.
-    """
+    """Base exception raised by the Gmail client."""
 
     def __init__(
         self,
