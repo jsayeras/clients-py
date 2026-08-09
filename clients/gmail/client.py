@@ -47,8 +47,13 @@ class GmailClient:
 
     def __init__(
         self,
-        credentials: Credentials,
+        credentials: str | Credentials,
     ) -> None:
+
+        if isinstance(credentials, str):
+            credentials = Credentials(
+                token=credentials,
+            )
         self._service: Resource = build(
             GMAIL_API_NAME,
             GMAIL_API_VERSION,
