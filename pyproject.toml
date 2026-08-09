@@ -10,3 +10,6 @@ dependencies = [
     "httpx>=0.28.1",
     "pydantic>=2.13.4",
 ]
+
+[tool.setuptools.packages.find]
+include = ["clients*"]

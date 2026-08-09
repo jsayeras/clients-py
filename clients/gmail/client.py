@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .errors import GmailClientError
 
 import logging
 from collections.abc import Iterable, Iterator
@@ -50,6 +51,18 @@ class GmailClient:
             GMAIL_API_VERSION,
             credentials=credentials,
             cache_discovery=False,
+        )
+
+    @staticmethod
+    def _translate_error(exc: HttpError) -> GmailClientError:
+        """
+        Translate a Google API HttpError into a client-level exception.
+        """
+        status_code = getattr(exc.resp, "status", None)
+
+        return GmailClientError(
+            "Gmail API request failed",
+            status_code=status_code,
         )
 
     @property
