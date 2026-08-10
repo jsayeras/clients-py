@@ -3,11 +3,10 @@ from __future__ import annotations
 from .errors import GmailClientError
 
 
-
 import logging
 from collections.abc import Iterable, Iterator
 from itertools import islice
-from typing import Any
+from typing import Any, Literal
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import Resource, build
@@ -152,12 +151,7 @@ class GmailClient:
         if metadata_headers is not None:
             kwargs["metadataHeaders"] = list(metadata_headers)
 
-        return (
-            self.service.users()
-            .messages()
-            .get(**kwargs)
-            .execute()
-        )
+        return self.service.users().messages().get(**kwargs).execute()
 
     # ------------------------------------------------------------------
     # History
@@ -350,16 +344,10 @@ class GmailClient:
         Return all Gmail labels.
         """
 
-        response = (
-            self.service.users()
-            .labels()
-            .list(userId="me")
-            .execute()
-        )
+        response = self.service.users().labels().list(userId="me").execute()
 
         return [
-            GmailLabel.model_validate(label)
-            for label in response.get("labels", [])
+            GmailLabel.model_validate(label) for label in response.get("labels", [])
         ]
 
     def get_label_by_name(
@@ -374,11 +362,7 @@ class GmailClient:
             raise ValueError("Label name cannot be empty")
 
         return next(
-            (
-                label
-                for label in self.get_labels()
-                if label.name == name
-            ),
+            (label for label in self.get_labels() if label.name == name),
             None,
         )
 
@@ -386,6 +370,7 @@ class GmailClient:
         self,
         name: str,
         *,
+        label_type: Literal["system", "user"] = "user",
         message_list_visibility: str = "show",
         label_list_visibility: str = "labelShow",
     ) -> GmailLabel:
@@ -410,6 +395,7 @@ class GmailClient:
             .execute()
         )
 
+        response["type"] = label_type
         return GmailLabel.model_validate(response)
 
     def get_or_create_label(
@@ -473,6 +459,4 @@ class GmailClient:
                 .execute()
             )
         except HttpError as exc:
-            raise GmailClientError(
-                f"Failed to delete Gmail label {label_id}"
-            ) from exc
+            raise GmailClientError(f"Failed to delete Gmail label {label_id}") from exc

@@ -9,6 +9,7 @@ dependencies = [
     "google-auth>=2.56.3",
     "httpx>=0.28.1",
     "pydantic>=2.13.4",
+    "ruff>=0.16.2",
 ]
 
 [tool.setuptools.packages.find]
