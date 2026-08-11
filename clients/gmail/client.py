@@ -461,7 +461,7 @@ class GmailClient:
         except HttpError as exc:
             raise GmailClientError(f"Failed to delete Gmail label {label_id}") from exc
 
-    def _get_subject(
+    def get_subject(
         message: dict[str, Any],
     ) -> str:
         """
