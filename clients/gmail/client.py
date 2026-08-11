@@ -462,6 +462,7 @@ class GmailClient:
             raise GmailClientError(f"Failed to delete Gmail label {label_id}") from exc
 
     def get_subject(
+        self,
         message: dict[str, Any],
     ) -> str:
         """
