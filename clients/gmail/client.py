@@ -460,3 +460,24 @@ class GmailClient:
             )
         except HttpError as exc:
             raise GmailClientError(f"Failed to delete Gmail label {label_id}") from exc
+
+    def _get_subject(
+        message: dict[str, Any],
+    ) -> str:
+        """
+        Extract the Subject header from a raw Gmail
+        API message.
+        """
+
+        payload = message.get("payload") or {}
+
+        headers = payload.get("headers") or []
+
+        for header in headers:
+            if header.get("name", "").lower() == "subject":
+                return header.get(
+                    "value",
+                    "",
+                )
+
+        return ""
