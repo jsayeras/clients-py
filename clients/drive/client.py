@@ -4,7 +4,7 @@ import random
 import time
 from typing import Any, BinaryIO
 
-from google.auth.credentials import Credentials
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
