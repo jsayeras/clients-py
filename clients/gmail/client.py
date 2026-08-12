@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import logging
 import base64
+import logging
 from collections.abc import Iterable, Iterator
 from itertools import islice
 from typing import Any, Literal
@@ -12,9 +12,9 @@ from googleapiclient.errors import HttpError
 
 from .errors import GmailClientError
 from .models import (
+    DownloadedAttachment,
     Email,
     EmailAttachment,
-    DownloadedAttachment,
     GmailBatchError,
     GmailHistoryResponse,
     GmailLabel,
@@ -22,6 +22,7 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 GMAIL_API_NAME = "gmail"
 GMAIL_API_VERSION = "v1"
@@ -116,9 +117,7 @@ class GmailClient:
                 )
             )
 
-            page_token = response.get(
-                "nextPageToken",
-            )
+            page_token = response.get("nextPageToken")
 
             if not page_token:
                 break
@@ -152,7 +151,12 @@ class GmailClient:
                 metadata_headers,
             )
 
-        message = self.service.users().messages().get(**kwargs).execute()
+        message = (
+            self.service.users()
+            .messages()
+            .get(**kwargs)
+            .execute()
+        )
 
         return self._to_email(message)
 
@@ -353,7 +357,10 @@ class GmailClient:
                     error.error,
                 )
 
-            messages.extend(self._to_email(response) for response in responses)
+            messages.extend(
+                self._to_email(response)
+                for response in responses
+            )
 
         logger.info(
             "Successfully retrieved %d Gmail messages",
@@ -454,7 +461,11 @@ class GmailClient:
             )
 
         return next(
-            (label for label in self.get_labels() if label.name == name),
+            (
+                label
+                for label in self.get_labels()
+                if label.name == name
+            ),
             None,
         )
 
@@ -485,8 +496,8 @@ class GmailClient:
                 userId="me",
                 body={
                     "name": name,
-                    "labelListVisibility": (label_list_visibility),
-                    "messageListVisibility": (message_list_visibility),
+                    "labelListVisibility": label_list_visibility,
+                    "messageListVisibility": message_list_visibility,
                 },
             )
             .execute()
@@ -516,8 +527,8 @@ class GmailClient:
 
         return self.create_label(
             name,
-            message_list_visibility=(message_list_visibility),
-            label_list_visibility=(label_list_visibility),
+            message_list_visibility=message_list_visibility,
+            label_list_visibility=label_list_visibility,
         )
 
     def add_labels(
@@ -571,34 +582,35 @@ class GmailClient:
                 f"Failed to delete Gmail label {label_id}",
             ) from exc
 
-        # --------------------------------------------------
-
+    # ------------------------------------------------------------------
     # Attachments
-    # --------------------------------------------------
+    # ------------------------------------------------------------------
 
     def list_attachments(
         self,
         message_id: str,
     ) -> list[EmailAttachment]:
         """
-        Return all attachments belonging to a Gmail message.
+        Return all actual file attachments belonging to a Gmail
+        message.
 
-        Only actual file attachments are returned.
-        Inline message parts without an attachment ID are
-        ignored.
+        Inline MIME parts without an attachmentId are ignored.
         """
 
         if not message_id:
-            raise ValueError("message_id is required")
+            raise ValueError(
+                "message_id is required",
+            )
 
-        response = self._execute(
-            self._service.users()
+        response = (
+            self.service.users()
             .messages()
             .get(
                 userId="me",
                 id=message_id,
                 format="full",
             )
+            .execute()
         )
 
         payload = response.get(
@@ -617,7 +629,7 @@ class GmailClient:
 
     def _collect_attachments(
         self,
-        part: dict,
+        part: dict[str, Any],
         attachments: list[EmailAttachment],
     ) -> None:
         """
@@ -634,17 +646,11 @@ class GmailClient:
             {},
         )
 
-        attachment_id = body.get("attachmentId")
+        attachment_id = body.get(
+            "attachmentId",
+        )
 
         if filename and attachment_id:
-            headers = {
-                header["name"].lower(): header["value"]
-                for header in part.get(
-                    "headers",
-                    [],
-                )
-            }
-
             mime_type = part.get(
                 "mimeType",
                 "application/octet-stream",
@@ -684,45 +690,49 @@ class GmailClient:
         """
         Download a Gmail attachment.
 
-        Gmail returns attachment content as URL-safe
-        base64 encoded data. This method converts it
-        into raw bytes.
+        Gmail returns attachment content as URL-safe base64 encoded
+        data. This method converts it into raw bytes.
         """
 
         if not message_id:
-            raise ValueError("message_id is required")
-
-        if not attachment.attachment_id:
-            raise ValueError("attachment.attachment_id is required")
-
-        try:
-            response = self._execute(
-                self._service.users()
-                .messages()
-                .attachments()
-                .get(
-                    userId="me",
-                    messageId=message_id,
-                    id=attachment.attachment_id,
-                )
+            raise ValueError(
+                "message_id is required",
             )
 
-        except HttpError:
-            raise
+        if not attachment.attachment_id:
+            raise ValueError(
+                "attachment.attachment_id is required",
+            )
+
+        response = (
+            self.service.users()
+            .messages()
+            .attachments()
+            .get(
+                userId="me",
+                messageId=message_id,
+                id=attachment.attachment_id,
+            )
+            .execute()
+        )
 
         encoded_data = response.get("data")
 
         if not encoded_data:
             raise RuntimeError(
-                f"Gmail returned no data for attachment {attachment.attachment_id!r}"
+                "Gmail returned no data for attachment "
+                f"{attachment.attachment_id!r}"
             )
 
         try:
-            content = base64.urlsafe_b64decode(encoded_data)
+            content = base64.urlsafe_b64decode(
+                encoded_data,
+            )
 
         except Exception as exc:
             raise RuntimeError(
-                f"Failed to decode Gmail attachment {attachment.attachment_id!r}"
+                "Failed to decode Gmail attachment "
+                f"{attachment.attachment_id!r}"
             ) from exc
 
         return DownloadedAttachment(
