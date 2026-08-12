@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+
 class Email(BaseModel):
     """
     Application-level representation of a Gmail email.
@@ -18,6 +19,7 @@ class Email(BaseModel):
     sender: str = ""
     recipient: str = ""
     date: str = ""
+
 
 class GmailMessageRef(BaseModel):
     """Minimal Gmail message returned by messages.list."""
@@ -100,3 +102,30 @@ class GmailBatchResult[T](BaseModel):
 
     messages: list[T] = Field(default_factory=list)
     errors: list[GmailBatchError] = Field(default_factory=list)
+
+
+class EmailAttachment(BaseModel):
+    """
+    Metadata describing an attachment in a Gmail message.
+    """
+
+    attachment_id: str
+    filename: str
+    mime_type: str
+    size: int = 0
+
+
+class DownloadedAttachment(BaseModel):
+    """
+    Attachment metadata plus its downloaded content.
+
+    The content is kept as bytes at the Gmail boundary.
+    The Drive client can receive it through BytesIO when
+    performing the upload.
+    """
+
+    attachment_id: str
+    filename: str
+    mime_type: str
+    size: int
+    content: bytes

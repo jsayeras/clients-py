@@ -1,9 +1,13 @@
 from .client import GmailClient
-from .errors import GmailClientError
-from .models import Email
+from .models import (
+    DownloadedAttachment,
+    Email,
+    EmailAttachment,
+)
 
 __all__ = [
+    "DownloadedAttachment",
     "Email",
+    "EmailAttachment",
     "GmailClient",
-    "GmailClientError",
 ]
