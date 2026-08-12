@@ -4,6 +4,20 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+class Email(BaseModel):
+    """
+    Application-level representation of a Gmail email.
+
+    This model belongs to the Gmail client package because the
+    Gmail client is responsible for converting Gmail API responses
+    into this representation.
+    """
+
+    id: str
+    subject: str = ""
+    sender: str = ""
+    recipient: str = ""
+    date: str = ""
 
 class GmailMessageRef(BaseModel):
     """Minimal Gmail message returned by messages.list."""

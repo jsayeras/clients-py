@@ -1,7 +1,5 @@
+
 from __future__ import annotations
-
-from .errors import GmailClientError
-
 
 import logging
 from collections.abc import Iterable, Iterator
@@ -12,7 +10,9 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import Resource, build
 from googleapiclient.errors import HttpError
 
+from .errors import GmailClientError
 from .models import (
+    Email,
     GmailBatchError,
     GmailHistoryResponse,
     GmailLabel,
@@ -38,38 +38,28 @@ DEFAULT_METADATA_HEADERS = (
 
 class GmailClient:
     """
-    Thin, typed wrapper around the Gmail API.
+    Typed wrapper around the Gmail API.
 
-    OAuth credential acquisition is deliberately handled outside
-    this class.
+    OAuth credential acquisition is handled outside this class.
+
+    Gmail API message responses are converted into Email objects
+    before being returned to callers.
     """
 
     def __init__(
         self,
         credentials: str | Credentials,
     ) -> None:
-
         if isinstance(credentials, str):
             credentials = Credentials(
                 token=credentials,
             )
+
         self._service: Resource = build(
             GMAIL_API_NAME,
             GMAIL_API_VERSION,
             credentials=credentials,
             cache_discovery=False,
-        )
-
-    @staticmethod
-    def _translate_error(exc: HttpError) -> GmailClientError:
-        """
-        Translate a Google API HttpError into a client-level exception.
-        """
-        status_code = getattr(exc.resp, "status", None)
-
-        return GmailClientError(
-            "Gmail API request failed",
-            status_code=status_code,
         )
 
     @property
@@ -87,7 +77,9 @@ class GmailClient:
         query: str | None = None,
     ) -> list[GmailMessageRef]:
         """
-        List Gmail messages with automatic pagination.
+        List Gmail messages.
+
+        Returns lightweight Gmail message references.
         """
 
         if max_results <= 0:
@@ -116,10 +108,15 @@ class GmailClient:
 
             messages.extend(
                 GmailMessageRef.model_validate(message)
-                for message in response.get("messages", [])
+                for message in response.get(
+                    "messages",
+                    [],
+                )
             )
 
-            page_token = response.get("nextPageToken")
+            page_token = response.get(
+                "nextPageToken",
+            )
 
             if not page_token:
                 break
@@ -132,15 +129,15 @@ class GmailClient:
         *,
         format: str = "metadata",
         metadata_headers: Iterable[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> Email:
         """
-        Retrieve a raw Gmail message.
-
-        Message parsing should remain outside the client.
+        Retrieve a Gmail message and convert it to Email.
         """
 
         if not message_id:
-            raise ValueError("message_id cannot be empty")
+            raise ValueError(
+                "message_id cannot be empty",
+            )
 
         kwargs: dict[str, Any] = {
             "userId": "me",
@@ -149,30 +146,52 @@ class GmailClient:
         }
 
         if metadata_headers is not None:
-            kwargs["metadataHeaders"] = list(metadata_headers)
+            kwargs["metadataHeaders"] = list(
+                metadata_headers,
+            )
 
-        return self.service.users().messages().get(**kwargs).execute()
+        message = (
+            self.service.users()
+            .messages()
+            .get(**kwargs)
+            .execute()
+        )
+
+        return self._to_email(message)
 
     # ------------------------------------------------------------------
     # History
     # ------------------------------------------------------------------
 
-    def get_latest_history_id(self) -> int | None:
+    def get_latest_history_id(
+        self,
+    ) -> int | None:
         """
         Return the latest mailbox history ID.
+
+        This needs the raw Gmail response because historyId is not
+        part of the Email model.
         """
 
-        messages = self.list_messages(max_results=1)
+        messages = self.list_messages(
+            max_results=1,
+        )
 
         if not messages:
             return None
 
-        message = self.get_message(
-            messages[0].id,
-            format="minimal",
+        response = (
+            self.service.users()
+            .messages()
+            .get(
+                userId="me",
+                id=messages[0].id,
+                format="minimal",
+            )
+            .execute()
         )
 
-        history_id = message.get("historyId")
+        history_id = response.get("historyId")
 
         if history_id is None:
             return None
@@ -213,7 +232,9 @@ class GmailClient:
             .execute()
         )
 
-        return GmailHistoryResponse.model_validate(response)
+        return GmailHistoryResponse.model_validate(
+            response,
+        )
 
     @staticmethod
     def extract_message_ids(
@@ -227,7 +248,9 @@ class GmailClient:
 
         for record in history.history:
             for added in record.messages_added:
-                ids.add(added.message.id)
+                ids.add(
+                    added.message.id,
+                )
 
         return list(ids)
 
@@ -241,11 +264,15 @@ class GmailClient:
         size: int,
     ) -> Iterator[list[str]]:
         if size <= 0:
-            raise ValueError("size must be greater than zero")
+            raise ValueError(
+                "size must be greater than zero",
+            )
 
         iterator = iter(iterable)
 
-        while chunk := list(islice(iterator, size)):
+        while chunk := list(
+            islice(iterator, size),
+        ):
             yield chunk
 
     def batch_get_messages(
@@ -255,15 +282,15 @@ class GmailClient:
         format: str = "metadata",
         batch_size: int = DEFAULT_BATCH_SIZE,
         metadata_headers: Iterable[str] = DEFAULT_METADATA_HEADERS,
-    ) -> list[dict[str, Any]]:
+    ) -> list[Email]:
         """
         Retrieve multiple Gmail messages using HTTP batch requests.
 
-        Returns raw Gmail API responses. Conversion into the application's
-        Email model belongs in the service layer.
+        Gmail API responses are converted into Email objects before
+        being returned.
         """
 
-        messages: list[dict[str, Any]] = []
+        messages: list[Email] = []
 
         for chunk in self._chunks(
             message_ids,
@@ -282,7 +309,7 @@ class GmailClient:
                         GmailBatchError(
                             message_id=request_id,
                             error=str(exception),
-                        )
+                        ),
                     )
                     return
 
@@ -301,7 +328,9 @@ class GmailClient:
                         userId="me",
                         id=message_id,
                         format=format,
-                        metadataHeaders=list(metadata_headers),
+                        metadataHeaders=list(
+                            metadata_headers,
+                        ),
                     )
                 )
 
@@ -312,6 +341,7 @@ class GmailClient:
 
             try:
                 batch.execute()
+
             except HttpError:
                 logger.exception(
                     "Gmail batch request failed for %d messages",
@@ -326,7 +356,10 @@ class GmailClient:
                     error.error,
                 )
 
-            messages.extend(responses)
+            messages.extend(
+                self._to_email(response)
+                for response in responses
+            )
 
         logger.info(
             "Successfully retrieved %d Gmail messages",
@@ -336,18 +369,81 @@ class GmailClient:
         return messages
 
     # ------------------------------------------------------------------
+    # Gmail -> Email
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _to_email(
+        message: dict[str, Any],
+    ) -> Email:
+        """
+        Convert a Gmail API message into Email.
+        """
+
+        message_id = message.get("id")
+
+        if not message_id:
+            raise ValueError(
+                "Gmail message does not contain an ID",
+            )
+
+        payload = message.get("payload") or {}
+        headers = payload.get("headers") or []
+
+        header_map = {
+            header.get("name", "").lower(): header.get(
+                "value",
+                "",
+            )
+            for header in headers
+        }
+
+        return Email(
+            id=message_id,
+            subject=header_map.get(
+                "subject",
+                "",
+            ),
+            sender=header_map.get(
+                "from",
+                "",
+            ),
+            recipient=header_map.get(
+                "to",
+                "",
+            ),
+            date=header_map.get(
+                "date",
+                "",
+            ),
+        )
+
+    # ------------------------------------------------------------------
     # Labels
     # ------------------------------------------------------------------
 
-    def get_labels(self) -> list[GmailLabel]:
+    def get_labels(
+        self,
+    ) -> list[GmailLabel]:
         """
         Return all Gmail labels.
         """
 
-        response = self.service.users().labels().list(userId="me").execute()
+        response = (
+            self.service.users()
+            .labels()
+            .list(
+                userId="me",
+            )
+            .execute()
+        )
 
         return [
-            GmailLabel.model_validate(label) for label in response.get("labels", [])
+            GmailLabel.model_validate(label)
+            for label in response.get(
+                "labels",
+                [],
+            )
         ]
 
     def get_label_by_name(
@@ -359,10 +455,16 @@ class GmailClient:
         """
 
         if not name:
-            raise ValueError("Label name cannot be empty")
+            raise ValueError(
+                "Label name cannot be empty",
+            )
 
         return next(
-            (label for label in self.get_labels() if label.name == name),
+            (
+                label
+                for label in self.get_labels()
+                if label.name == name
+            ),
             None,
         )
 
@@ -370,7 +472,10 @@ class GmailClient:
         self,
         name: str,
         *,
-        label_type: Literal["system", "user"] = "user",
+        label_type: Literal[
+            "system",
+            "user",
+        ] = "user",
         message_list_visibility: str = "show",
         label_list_visibility: str = "labelShow",
     ) -> GmailLabel:
@@ -379,7 +484,9 @@ class GmailClient:
         """
 
         if not name:
-            raise ValueError("Label name cannot be empty")
+            raise ValueError(
+                "Label name cannot be empty",
+            )
 
         response = (
             self.service.users()
@@ -388,15 +495,22 @@ class GmailClient:
                 userId="me",
                 body={
                     "name": name,
-                    "labelListVisibility": label_list_visibility,
-                    "messageListVisibility": message_list_visibility,
+                    "labelListVisibility": (
+                        label_list_visibility
+                    ),
+                    "messageListVisibility": (
+                        message_list_visibility
+                    ),
                 },
             )
             .execute()
         )
 
         response["type"] = label_type
-        return GmailLabel.model_validate(response)
+
+        return GmailLabel.model_validate(
+            response,
+        )
 
     def get_or_create_label(
         self,
@@ -416,8 +530,12 @@ class GmailClient:
 
         return self.create_label(
             name,
-            message_list_visibility=message_list_visibility,
-            label_list_visibility=label_list_visibility,
+            message_list_visibility=(
+                message_list_visibility
+            ),
+            label_list_visibility=(
+                label_list_visibility
+            ),
         )
 
     def add_labels(
@@ -434,23 +552,30 @@ class GmailClient:
         if not label_ids:
             return
 
-        self.service.users().messages().modify(
-            userId="me",
-            id=message_id,
-            body={
-                "addLabelIds": label_ids,
-            },
-        ).execute()
+        (
+            self.service.users()
+            .messages()
+            .modify(
+                userId="me",
+                id=message_id,
+                body={
+                    "addLabelIds": label_ids,
+                },
+            )
+            .execute()
+        )
 
-    def delete_label(self, label_id: str) -> None:
+    def delete_label(
+        self,
+        label_id: str,
+    ) -> None:
         """
         Delete a Gmail label.
-
-        Gmail system labels cannot be deleted.
         """
+
         try:
             (
-                self._service.users()
+                self.service.users()
                 .labels()
                 .delete(
                     userId="me",
@@ -458,27 +583,8 @@ class GmailClient:
                 )
                 .execute()
             )
+
         except HttpError as exc:
-            raise GmailClientError(f"Failed to delete Gmail label {label_id}") from exc
-
-    def get_subject(
-        self,
-        message: dict[str, Any],
-    ) -> str:
-        """
-        Extract the Subject header from a raw Gmail
-        API message.
-        """
-
-        payload = message.get("payload") or {}
-
-        headers = payload.get("headers") or []
-
-        for header in headers:
-            if header.get("name", "").lower() == "subject":
-                return header.get(
-                    "value",
-                    "",
-                )
-
-        return ""
+            raise GmailClientError(
+                f"Failed to delete Gmail label {label_id}",
+            ) from exc
